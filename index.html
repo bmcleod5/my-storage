@@ -10,6 +10,15 @@
 .cover img,#detailPhoto img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:cover}
 #itemList{min-width:0;overflow:hidden}
 @media(max-width:480px){.thumb{width:64px;height:64px;min-width:64px;max-width:64px;flex-basis:64px}.item{gap:9px}.item .actions button{padding:8px}}
+
+/* Photo lightbox */
+#photoViewer{width:min(94vw,900px);max-width:94vw;padding:12px;background:#fff}
+#photoViewer img{display:block;max-width:100%;max-height:75vh;width:auto;height:auto;object-fit:contain;margin:auto;border-radius:10px}
+#photoViewer .viewerbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+#photoViewer .viewerbar strong{overflow-wrap:anywhere}
+#detailPhoto img,#itemList .thumb img{cursor:zoom-in}
+#detailPhoto img:focus-visible,#itemList .thumb img:focus-visible{outline:3px solid #1768db;outline-offset:2px}
+@media print{#photoViewer{display:none!important}}
 </style></head><body><main>
 <header><div><div class="muted">FAMILY INVENTORY</div><h1>📦 My Storage</h1></div><div class="top-actions hidden" id="signedActions"><button id="exportBtn">Export CSV</button><button id="signOut">Sign out</button></div></header>
 <section id="auth" class="authwrap panel"><h2 id="authHeading">Sign in</h2><p>Access your family's shared storage inventory.</p><form id="authForm"><label for="email">Email address</label><input id="email" type="email" autocomplete="email" required><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" minlength="6" required><button class="primary wide" style="margin-top:16px" id="authSubmit">Sign in</button></form><button class="switch" id="toggleAuth">Create an account instead</button><div id="authMessage" role="status"></div></section>
@@ -19,6 +28,7 @@
 <div class="footer noprint">Shared family inventory · Private photos · Changes saved to Supabase. QR/NFC links work after the app is published.</div></main>
 <dialog id="editor"><form id="editForm"><h2 id="formTitle"></h2><input type="hidden" id="editType"><input type="hidden" id="editId"><label for="name">Name</label><input id="name" required maxlength="120"><div id="binFields"><label for="number">Bin number</label><input id="number" maxlength="20" placeholder="001"><label for="location">Location</label><input id="location" maxlength="120" placeholder="Basement · Shelf B"><label for="description">Description</label><textarea id="description" rows="3" maxlength="1000"></textarea></div><div id="itemFields"><label for="quantity">Quantity</label><input id="quantity" type="number" min="0" max="99999" value="1"><label for="notes">Notes</label><textarea id="notes" rows="2" maxlength="500"></textarea><label for="moveBin">Stored in bin</label><select id="moveBin"></select><label for="itemPhoto">Item photo (optional)</label><input id="itemPhoto" type="file" accept="image/jpeg,image/png,image/webp"></div><div class="form-actions"><button type="button" id="cancel">Cancel</button><button type="submit" class="primary" id="saveBtn">Save</button></div></form></dialog>
 <dialog id="inviteDialog"><h2>Invite your family</h2><p>Share this private invitation code with people you trust. Each person must create their own login, then enter the code.</p><input id="inviteCode" readonly aria-label="Invitation code"><div class="form-actions"><button id="copyInvite">Copy code</button><button id="closeInvite">Close</button></div><p class="hint">Anyone with this code can join and edit your inventory. Generate a new code to revoke the old one.</p><button id="rotateInvite">Generate a new code</button></dialog>
+<dialog id="photoViewer" aria-label="Enlarged photograph"><div class="viewerbar"><strong id="viewerTitle">Photograph</strong><button id="closePhoto" type="button" aria-label="Close enlarged photo">✕ Close</button></div><img id="viewerImage" alt="Enlarged inventory photograph"></dialog>
 <div id="toast" role="status"></div>
 <script type="module">
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
@@ -55,6 +65,14 @@ async function getInvite(rotate=false){const {data,error}=await sb.rpc(rotate?'r
 $('inviteBtn').onclick=()=>getInvite().catch(fail);$('rotateInvite').onclick=()=>{if(confirm('Old invite code will stop working. Continue?'))getInvite(true).catch(fail)};$('closeInvite').onclick=()=>$('inviteDialog').close();$('copyInvite').onclick=async()=>{try{await navigator.clipboard.writeText($('inviteCode').value);toast('Invitation code copied')}catch{ $('inviteCode').select();toast('Select and copy the code')}};
 $('cancel').onclick=()=>$('editor').close();$('addBin').onclick=()=>edit('bin');$('addItem').onclick=()=>edit('item');$('editBin').onclick=()=>edit('bin',current);$('back').onclick=home;$('search').oninput=renderHome;$('binPhotoBtn').onclick=()=>$('binPhoto').click();$('printBtn').onclick=()=>window.print();
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-bin]');if(b){await openBin(b.dataset.bin);return}const ed=e.target.closest('[data-edit]');if(ed){edit('item',ed.dataset.edit);return}const del=e.target.closest('[data-del]');if(del&&confirm('Delete this item?')){const {error}=await sb.from('items').delete().eq('id',del.dataset.del);if(error)fail(error);else await refresh()}});
+// Click or press Enter on an inventory photo to see it enlarged.
+function openPhoto(img){$('viewerImage').src=img.currentSrc||img.src;$('viewerImage').alt=img.alt||'Inventory photo';$('viewerTitle').textContent=img.closest('#detailPhoto')?'Bin photo':'Item photo';$('photoViewer').showModal()}
+$('closePhoto').onclick=()=>$('photoViewer').close();
+$('photoViewer').addEventListener('click',e=>{if(e.target===$('photoViewer'))$('photoViewer').close()});
+$('detail').addEventListener('click',e=>{const img=e.target.closest('#detailPhoto img,#itemList .thumb img');if(img)openPhoto(img)});
+$('detail').addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('#detailPhoto img,#itemList .thumb img')){e.preventDefault();openPhoto(e.target)}});
+const photoObserver=new MutationObserver(()=>{document.querySelectorAll('#detailPhoto img,#itemList .thumb img').forEach(img=>{img.tabIndex=0;img.setAttribute('role','button');img.setAttribute('aria-label','Enlarge '+(img.alt||'photo'))})});
+photoObserver.observe($('detail'),{childList:true,subtree:true});
 $('deleteBin').onclick=async()=>{if(!confirm('Permanently delete this bin and all its items?'))return;const {error}=await sb.from('bins').delete().eq('id',current);if(error)fail(error);else{current=null;await refresh()}};
 $('exportBtn').onclick=()=>{const rows=[['Bin','Bin Name','Location','Description','Item','Quantity','Notes']];bins.forEach(b=>{const its=items.filter(i=>i.bin_id===b.id);if(!its.length)rows.push([b.bin_number,b.name,b.location,b.description,'','','']);else its.forEach(i=>rows.push([b.bin_number,b.name,b.location,b.description,i.name,i.quantity,i.description]))});const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='my-storage-inventory.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 async function boot(session){user=session?.user||null;show('auth',!user);show('signedActions',!!user);if(user){await refresh();const hash=decodeURIComponent(location.hash.replace(/^#bin=/,''));if(hash&&bins.some(b=>b.id===hash))await openBin(hash)}else{show('onboard',false);show('home',false);show('detail',false)}}
